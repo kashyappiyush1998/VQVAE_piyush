@@ -9,19 +9,45 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import CelebA
 import zipfile
+from random import shuffle
 
 
 # Add your custom dataset class here
 class MyDataset(Dataset):
-    def __init__(self):
-        pass
-    
+    def __init__(self, 
+                 data_path: str, 
+                 split: str,
+                 transform: Callable,
+                **kwargs):
+        if(split=="train"):
+            self.data_dir = Path(data_path)      
+        else:
+            # self.data_dir = Path(data_path+"_test/")
+            self.data_dir = Path(data_path)
+        print(self.data_dir)  
+        self.transforms = transform
+        self.imgs = []
+        for dirpath, dirnames, filenames in os.walk(self.data_dir):
+            for filename in [f for f in filenames if f.endswith(".png")]:
+                self.imgs.append(os.path.join(dirpath, filename))
+        if(split=="train"):
+            shuffle(self.imgs)
+        else:
+            self.imgs = sorted(self.imgs)
+            print(self.imgs[:5])
+        # imgs = sorted([f for f in self.data_dir.iterdir() if f.suffix == '.jpg'])
+        # self.imgs = imgs[:int(len(imgs) * 0.90)] if split == "train" else imgs[int(len(imgs) * 0.90):]
     
     def __len__(self):
-        pass
+        return len(self.imgs)
     
     def __getitem__(self, idx):
-        pass
+        img = default_loader(self.imgs[idx])
+        
+        if self.transforms is not None:
+            img = self.transforms(img)
+        
+        return img, 0.0 # dummy datat to prevent breaking 
 
 
 class MyCelebA(CelebA):
@@ -127,16 +153,16 @@ class VAEDataset(LightningDataModule):
 #       =========================  CelebA Dataset  =========================
     
         train_transforms = transforms.Compose([transforms.RandomHorizontalFlip(),
-                                              transforms.CenterCrop(148),
-                                              transforms.Resize(self.patch_size),
+                                                transforms.Resize(self.patch_size),
+                                              transforms.CenterCrop(self.patch_size),
                                               transforms.ToTensor(),])
         
-        val_transforms = transforms.Compose([transforms.RandomHorizontalFlip(),
-                                            transforms.CenterCrop(148),
+        val_transforms = transforms.Compose([#transforms.RandomHorizontalFlip(),
                                             transforms.Resize(self.patch_size),
+                                            transforms.CenterCrop(self.patch_size),
                                             transforms.ToTensor(),])
         
-        self.train_dataset = MyCelebA(
+        self.train_dataset = MyDataset(
             self.data_dir,
             split='train',
             transform=train_transforms,
@@ -144,7 +170,7 @@ class VAEDataset(LightningDataModule):
         )
         
         # Replace CelebA with your dataset
-        self.val_dataset = MyCelebA(
+        self.val_dataset = MyDataset(
             self.data_dir,
             split='test',
             transform=val_transforms,
@@ -173,9 +199,9 @@ class VAEDataset(LightningDataModule):
     def test_dataloader(self) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
             self.val_dataset,
-            batch_size=144,
+            batch_size=self.val_batch_size,
             num_workers=self.num_workers,
-            shuffle=True,
+            shuffle=False,
             pin_memory=self.pin_memory,
         )
      

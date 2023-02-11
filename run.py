@@ -38,6 +38,9 @@ seed_everything(config['exp_params']['manual_seed'], True)
 model = vae_models[config['model_params']['name']](**config['model_params'])
 experiment = VAEXperiment(model,
                           config['exp_params'])
+if(config['exp_params'].get("resume")):
+    print(config['exp_params'].get("resume"))
+    experiment.load_state_dict(torch.load(config['exp_params'].get("resume"))['state_dict'])
 
 data = VAEDataset(**config["data_params"], pin_memory=len(config['trainer_params']['gpus']) != 0)
 
@@ -60,3 +63,4 @@ Path(f"{tb_logger.log_dir}/Reconstructions").mkdir(exist_ok=True, parents=True)
 
 print(f"======= Training {config['model_params']['name']} =======")
 runner.fit(experiment, datamodule=data)
+# runner.validate(experiment, datamodule=data)

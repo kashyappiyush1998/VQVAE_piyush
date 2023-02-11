@@ -35,8 +35,8 @@ class VectorQuantizer(nn.Module):
         encoding_inds = torch.argmin(dist, dim=1).unsqueeze(1)  # [BHW, 1]
 
         # Convert to one-hot encodings
-        device = latents.device
-        encoding_one_hot = torch.zeros(encoding_inds.size(0), self.K, device=device)
+        # device = latents.device
+        encoding_one_hot = torch.zeros(encoding_inds.size(0), self.K, device='cuda')
         encoding_one_hot.scatter_(1, encoding_inds, 1)  # [BHW x K]
 
         # Quantize the latents
@@ -49,7 +49,7 @@ class VectorQuantizer(nn.Module):
 
         vq_loss = commitment_loss * self.beta + embedding_loss
 
-        # Add the residue back to the latents
+        # Add the residue back to the latents.
         quantized_latents = latents + (quantized_latents - latents).detach()
 
         return quantized_latents.permute(0, 3, 1, 2).contiguous(), vq_loss  # [B x D x H x W]
@@ -164,6 +164,7 @@ class VQVAE(BaseVAE):
                 nn.Tanh()))
 
         self.decoder = nn.Sequential(*modules)
+        self.quantized_list = []
 
     def encode(self, input: Tensor) -> List[Tensor]:
         """
@@ -188,7 +189,13 @@ class VQVAE(BaseVAE):
 
     def forward(self, input: Tensor, **kwargs) -> List[Tensor]:
         encoding = self.encode(input)[0]
+        # print("Encoding: ", encoding.shape, torch.max(encoding), torch.min(encoding))
         quantized_inputs, vq_loss = self.vq_layer(encoding)
+        # torch.save(quantized_inputs, "car_4_green.pt")
+        # print("Quantized: ", quantized_inputs.shape, torch.max(quantized_inputs), torch.min(quantized_inputs))
+        # exit(0)
+        # self.quantized_list.append(quantized_inputs)
+
         return [self.decode(quantized_inputs), input, vq_loss]
 
     def loss_function(self,
@@ -213,7 +220,37 @@ class VQVAE(BaseVAE):
     def sample(self,
                num_samples: int,
                current_device: Union[int, str], **kwargs) -> Tensor:
-        raise Warning('VQVAE sampler is not implemented.')
+
+        z = torch.randn(num_samples, 64, 64, 64)
+
+        z = z.to(current_device)
+        quantized_inputs, vq_loss = self.vq_layer(z)
+        values = quantized_inputs.view(-1)
+        # print(values.shape)
+        quantized_inputs_copy = quantized_inputs.clone()
+
+        idx = torch.randperm(quantized_inputs.nelement())
+        quantized_inputs_copy = quantized_inputs.view(-1)[idx].view(quantized_inputs.size())   
+        
+        # torch.save(quantized_inputs_copy, 'rand_quantized_input.pt')  
+        # exit(0)
+        # for i in range(quantized_inputs.size()[0]):
+        #     for j in range(quantized_inputs.size()[1]):
+        #         for k in range(quantized_inputs.size()[2]):
+        #             for l in range(quantized_inputs.size()[3]):
+        #                 quantized_inputs_copy[i][j][k][l] = values[torch.randint(0, values.size()[0], (1,))[0]]
+
+        # quantized_inputs_copy = torch.ones(quantized_inputs.shape).cuda() * values[0]
+        # quantized_inputs_copy = quantized_inputs[]
+        # print(quantized_inputs_copy)
+        # print(quantized_inputs_copy.shape, torch.max(quantized_inputs_copy), torch.min(quantized_inputs_copy))
+
+        # print(quantized_inputs_copy.shape)
+        # exit(0)
+        samples = self.decode(quantized_inputs_copy)
+        # exit(0)
+        return samples
+        # raise samples#Warning('VQVAE sampler is not implemented.')
 
     def generate(self, x: Tensor, **kwargs) -> Tensor:
         """
